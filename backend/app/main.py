@@ -36,6 +36,8 @@ import base64
 from gis.risk_engine import calculate_risk
 from gis.priority_engine import calculate_priority_result
 from gis.main import generate_mission_plan
+from gis.geo_service import map_ready_detection, normalize_backend_data
+from gis.route_planner import plan_route
 try:
     from computer_vision.final_preprocessing_pipeline import process_sonar_image
 except ImportError:
@@ -72,9 +74,25 @@ ensure_detection_columns()
 
 app = FastAPI(title="Marine Debris Detection API")
 
+# Configure CORS for local development and production deployments (Vercel, custom domain)
+frontend_url = os.getenv("FRONTEND_URL", "")
+allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://aquavision-1a92a91e7-jhansikasa-projects.vercel.app",
+]
+if frontend_url:
+    for u in frontend_url.split(","):
+        u_clean = u.strip().rstrip("/")
+        if u_clean and u_clean not in allowed_origins:
+            allowed_origins.append(u_clean)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -525,14 +543,26 @@ def upload_image(
     survey_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No sonar image file supplied")
+
     if not survey_id:
-        raise HTTPException(
-            status_code=400,
-            detail="A survey MUST exist before sonar images can be uploaded. Please create or select a survey first."
-        )
-    survey = db.query(models.Survey).filter(models.Survey.id == survey_id).first()
-    if not survey:
-        raise HTTPException(status_code=404, detail="Survey not found")
+        survey = db.query(models.Survey).order_by(models.Survey.id.asc()).first()
+        if not survey:
+            survey = models.Survey(
+                name="Default Survey Mission",
+                location="Coastal Zone",
+                water_body="Coastal Zone",
+                vessel="Survey Vessel",
+                status="pending",
+            )
+            db.add(survey)
+            db.commit()
+            db.refresh(survey)
+    else:
+        survey = db.query(models.Survey).filter(models.Survey.id == survey_id).first()
+        if not survey:
+            raise HTTPException(status_code=404, detail=f"Survey with ID {survey_id} not found")
 
     # Save the uploaded file to disk
     filename = f"{survey.id}_{os.path.basename(file.filename)}"
@@ -573,15 +603,27 @@ async def analyze_image(
         if not file.filename:
             raise HTTPException(status_code=400, detail="No sonar image supplied")
 
-        # A survey MUST exist before sonar images can be uploaded
-        if survey_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="A survey MUST exist before sonar images can be uploaded. Please create or select a survey first."
-            )
-        survey = db.query(models.Survey).filter(models.Survey.id == survey_id).first()
-        if not survey:
-            raise HTTPException(status_code=404, detail=f"Survey with ID {survey_id} not found")
+        # Resolve survey: use provided ID or fallback to first survey or default survey
+        if survey_id is not None:
+            survey = db.query(models.Survey).filter(models.Survey.id == survey_id).first()
+            if not survey:
+                raise HTTPException(status_code=404, detail=f"Survey with ID {survey_id} not found")
+        else:
+            survey = db.query(models.Survey).order_by(models.Survey.id.asc()).first()
+            if not survey:
+                survey = models.Survey(
+                    name="Default Survey Mission",
+                    location="Coastal Zone",
+                    water_body="Coastal Zone",
+                    vessel="Survey Vessel",
+                    latitude=latitude or 17.6868,
+                    longitude=longitude or 83.2185,
+                    depth=depth or 42.5,
+                    status="pending",
+                )
+                db.add(survey)
+                db.commit()
+                db.refresh(survey)
         if latitude is not None:
             survey.latitude = latitude
         if longitude is not None:
@@ -996,4 +1038,713 @@ async def analyze_debug_image(
         "survey_code": f"SURV-{survey.id:03d}",
         "filename": safe_name,
         "thresholds": threshold_results,
+    }
+# ---------------------------------------------------------
+# 3. GET /surveys and GET /survey -> list all surveys
+# ---------------------------------------------------------
+@app.get("/surveys", response_model=List[schemas.SurveyOut])
+def list_surveys(db: Session = Depends(get_db)):
+    return db.query(models.Survey).order_by(models.Survey.id.desc()).all()
+
+
+@app.get("/survey", response_model=List[schemas.SurveyOut])
+def list_surveys_alias(db: Session = Depends(get_db)):
+    return db.query(models.Survey).order_by(models.Survey.id.desc()).all()
+
+
+# ---------------------------------------------------------
+# 4. GET /detections -> list detections (optionally for one survey or status)
+# ---------------------------------------------------------
+@app.get("/detections")
+def list_detections(
+    survey_id: Optional[int] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Detection)
+    if survey_id is not None:
+        query = query.join(models.Image).filter(models.Image.survey_id == survey_id)
+    if status is not None and status.strip():
+        query = query.filter(models.Detection.status == status.strip().lower())
+    detections = query.order_by(models.Detection.id.asc()).all()
+    return [serialize_detection(d, db) for d in detections]
+
+
+# ---------------------------------------------------------
+# 4b. GET /detections/{id} -> single detection
+# ---------------------------------------------------------
+@app.get("/detections/{detection_id}")
+def get_detection(detection_id: int, db: Session = Depends(get_db)):
+    detection = db.query(models.Detection).filter(models.Detection.id == detection_id).first()
+    if not detection:
+        raise HTTPException(status_code=404, detail="Detection not found")
+    return serialize_detection(detection, db)
+
+
+def _image_payload(filepath: str, annotate_bbox=None, object_class=None, confidence=None):
+    if not filepath or not os.path.isfile(filepath):
+        cand = os.path.join(UPLOAD_DIR, os.path.basename(filepath or ""))
+        if os.path.isfile(cand):
+            filepath = cand
+        else:
+            raise HTTPException(status_code=404, detail="Image file not found on server")
+
+    if annotate_bbox and len(annotate_bbox) >= 4:
+        img = cv2.imread(filepath)
+        if img is None:
+            try:
+                img = cv2.imdecode(np.fromfile(filepath, np.uint8), cv2.IMREAD_COLOR)
+            except Exception:
+                pass
+        if img is not None:
+            h, w = img.shape[:2]
+            x1, y1, x2, y2 = [int(round(float(v))) for v in annotate_bbox]
+            x1 = max(0, min(x1, w - 1))
+            x2 = max(0, min(x2, w - 1))
+            y1 = max(0, min(y1, h - 1))
+            y2 = max(0, min(y2, h - 1))
+            if x2 > x1 and y2 > y1:
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 68), 8)
+                conf_pct = int(round((confidence or 0.0) * (100 if (confidence or 0.0) <= 1 else 1)))
+                label = f"{object_class or 'Detection'} {conf_pct}%"
+                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+                lbl_top = max(0, y1 - th - 10)
+                cv2.rectangle(img, (x1, lbl_top), (min(w - 1, x1 + tw + 10), y1), (0, 255, 68), -1)
+                cv2.putText(img, label, (x1 + 5, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 2, cv2.LINE_AA)
+            ok, enc = cv2.imencode('.png', img)
+            if ok:
+                b64 = base64.b64encode(enc.tobytes()).decode('ascii')
+                return {
+                    "data_url": f"data:image/png;base64,{b64}",
+                    "mime": "image/png",
+                    "filename": os.path.basename(filepath),
+                }
+
+    ext = os.path.splitext(filepath)[1].lower().lstrip(".") or "png"
+    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+    with open(filepath, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+    return {
+        "data_url": f"data:{mime};base64,{b64}",
+        "mime": mime,
+        "filename": os.path.basename(filepath),
+    }
+
+
+# ---------------------------------------------------------
+# 5. GET /detections/{detection_id}/image
+# ---------------------------------------------------------
+@app.get("/detections/{detection_id}/image")
+def get_detection_image(
+    detection_id: str,
+    image_id: Optional[int] = None,
+    annotate: bool = True,
+    db: Session = Depends(get_db),
+):
+    raw_str = str(detection_id).split("/")[-1]
+    digits = "".join(ch for ch in raw_str if ch.isdigit())
+    image = None
+    detection = None
+    if digits:
+        detection = db.query(models.Detection).filter(models.Detection.id == int(digits)).first()
+        if detection:
+            image = db.query(models.Image).filter(models.Image.id == detection.image_id).first()
+    if image is None and image_id is not None:
+        image = db.query(models.Image).filter(models.Image.id == image_id).first()
+    if not image:
+        raise HTTPException(status_code=404, detail="Detection image not found")
+
+    bbox = detection.bbox if (annotate and detection) else None
+    cls_name = detection.object_class if detection else None
+    conf = detection.confidence if detection else None
+    return _image_payload(image.filepath, annotate_bbox=bbox, object_class=cls_name, confidence=conf)
+
+
+# ---------------------------------------------------------
+# 5b. GET /images/{image_id}/image
+# ---------------------------------------------------------
+@app.get("/images/{image_id}/image")
+def get_image_by_id(image_id: int, db: Session = Depends(get_db)):
+    image = db.query(models.Image).filter(models.Image.id == image_id).first()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image record not found")
+    return _image_payload(image.filepath)
+
+
+# ---------------------------------------------------------
+# 6. POST /review -> human operator confirms / rejects / flags detection
+# ---------------------------------------------------------
+@app.post("/review")
+def review_detection(review_in: schemas.ReviewIn, db: Session = Depends(get_db)):
+    detection = db.query(models.Detection).filter(
+        models.Detection.id == review_in.detection_id
+    ).first()
+    if not detection:
+        raise HTTPException(status_code=404, detail=f"Detection with id={review_in.detection_id} not found")
+
+    verdict = review_in.verdict.lower().strip()
+    if verdict not in ["confirmed", "rejected", "flagged", "accepted"]:
+        raise HTTPException(status_code=400, detail="Verdict must be 'confirmed', 'rejected', or 'flagged'")
+
+    new_status = "confirmed" if verdict in ["confirmed", "accepted"] else ("flagged" if verdict == "flagged" else "rejected")
+    detection.status = new_status
+    review = models.Review(
+        detection_id=detection.id,
+        reviewer=review_in.reviewer or "operator",
+        verdict=new_status,
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(detection)
+
+    return {
+        "message": "Review recorded",
+        "detection_id": detection.id,
+        "new_status": detection.status,
+        "status": detection.status,
+        "comment": review_in.comment,
+    }
+
+
+# ---------------------------------------------------------
+# 7. POST /cleanup -> mark detection as cleaned
+# ---------------------------------------------------------
+@app.post("/cleanup")
+def cleanup_detection(
+    payload: Optional[dict] = None,
+    detection_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    target_id = detection_id
+    if target_id is None and payload:
+        target_id = payload.get("detection_id")
+    if target_id is None:
+        raise HTTPException(status_code=400, detail="detection_id is required")
+
+    detection = db.query(models.Detection).filter(
+        models.Detection.id == target_id
+    ).first()
+    if not detection:
+        raise HTTPException(status_code=404, detail="Detection not found")
+
+    detection.status = "cleaned"
+    db.commit()
+    db.refresh(detection)
+
+    return {
+        "message": "Cleanup marked successfully",
+        "detection_id": detection.id,
+        "status": detection.status,
+    }
+
+
+# ---------------------------------------------------------
+# 8. GET /priority and GET /cleanup-priority -> detections ordered by risk
+# ---------------------------------------------------------
+@app.get("/priority")
+def cleanup_queue(survey_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Detection).filter(models.Detection.risk_score.isnot(None))
+    if survey_id is not None:
+        query = query.join(models.Image).filter(models.Image.survey_id == survey_id)
+    dets = query.order_by(models.Detection.risk_score.desc()).all()
+    return [serialize_detection(d, db) for d in dets]
+
+
+@app.get("/cleanup-priority")
+def cleanup_priority_alias(survey_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return cleanup_queue(survey_id=survey_id, db=db)
+
+
+# ---------------------------------------------------------
+# 9. POST /verify -> before/after cleanup verification
+# ---------------------------------------------------------
+@app.post("/verify")
+def verify_detection(
+    verify_in: schemas.VerifyIn,
+    db: Session = Depends(get_db),
+):
+    detection = db.query(models.Detection).filter(
+        models.Detection.id == verify_in.detection_id
+    ).first()
+    if not detection:
+        raise HTTPException(status_code=404, detail="Detection not found")
+
+    if verify_in.after_image_id:
+        after_image = db.query(models.Image).filter(
+            models.Image.id == verify_in.after_image_id
+        ).first()
+        if not after_image:
+            raise HTTPException(status_code=404, detail="After image not found")
+
+        after_bgr = cv2.imread(after_image.filepath)
+        if after_bgr is not None:
+            proc_after = preprocess_sonar(after_bgr)
+            results = model(proc_after, conf=0.15, verbose=False)
+        else:
+            results = model(after_image.filepath, conf=0.15, verbose=False)
+
+        raw_after_cands = []
+        for result in results:
+            names = result.names or model.names
+            for box in result.boxes:
+                cid = int(box.cls[0])
+                conf = float(box.conf[0])
+                bb = [float(v) for v in box.xyxy[0].tolist()]
+                cname = names[cid] if isinstance(names, dict) else str(cid)
+                raw_after_cands.append({"class": cname, "confidence": conf, "bbox": bb})
+
+        after_detections, _, _, _ = suppress_duplicate_detections(
+            raw_after_cands, iou_thresh=0.45, containment_thresh=0.65, conf_tolerance=0.02
+        )
+
+        same_object_found = False
+        best_iou = 0.0
+        after_conf = 0.0
+        for ad in after_detections:
+            if ad["class"] != detection.object_class:
+                continue
+            if detection.bbox and len(detection.bbox) >= 4:
+                iou_val, _ = calculate_box_overlap(detection.bbox, ad["bbox"])
+            else:
+                iou_val = 0.31
+            if iou_val > best_iou:
+                best_iou = iou_val
+                after_conf = ad["confidence"]
+            if iou_val >= 0.30:
+                same_object_found = True
+
+        if same_object_found:
+            result_status = "still_present"
+            conf_val = round((after_conf + best_iou) / 2, 2)
+        else:
+            result_status = "potentially_removed"
+            conf_val = round(1 - (detection.confidence or 0.5) * 0.5, 2)
+            detection.status = "cleaned"
+
+        verification = models.Verification(
+            detection_id=detection.id,
+            before_image_id=verify_in.before_image_id or detection.image_id,
+            after_image_id=verify_in.after_image_id,
+            result=result_status,
+            confidence=conf_val,
+            comment=verify_in.comment or ("CLEARED" if not same_object_found else "NOT CLEARED"),
+        )
+        db.add(verification)
+        db.commit()
+        db.refresh(verification)
+        return {
+            "id": verification.id,
+            "detection_id": detection.id,
+            "result": result_status,
+            "confidence": conf_val,
+            "status": detection.status,
+            "message": "Before/after verification completed using YOLO",
+        }
+    else:
+        detection.status = "cleaned"
+        verification = models.Verification(
+            detection_id=detection.id,
+            before_image_id=detection.image_id,
+            after_image_id=detection.image_id,
+            result="potentially_removed",
+            confidence=round(1 - (detection.confidence or 0.5) * 0.5, 2),
+            comment=verify_in.comment or "Operator verified removal",
+        )
+        db.add(verification)
+        db.commit()
+        db.refresh(verification)
+        return {
+            "id": verification.id,
+            "detection_id": detection.id,
+            "result": "potentially_removed",
+            "confidence": verification.confidence,
+            "status": detection.status,
+            "message": "Detection verified as removed",
+        }
+
+
+# ---------------------------------------------------------
+# 10. GET /verifications -> list all verification history
+# ---------------------------------------------------------
+@app.get("/verifications")
+def get_verifications(db: Session = Depends(get_db)):
+    verifications = db.query(models.Verification).order_by(models.Verification.id.desc()).all()
+    result = []
+    for v in verifications:
+        detection = db.query(models.Detection).filter(models.Detection.id == v.detection_id).first()
+        det_data = serialize_detection(detection, db) if detection else {}
+        result.append({
+            "id": v.id,
+            "verification_id": v.id,
+            "detection_id": v.detection_id,
+            "before_image_id": v.before_image_id,
+            "after_image_id": v.after_image_id,
+            "result": v.result,
+            "confidence": v.confidence,
+            "comment": v.comment,
+            "timestamp": v.timestamp.isoformat() if v.timestamp else None,
+            "detection": det_data,
+        })
+    return result
+
+
+# ---------------------------------------------------------
+# 11. POST /verify_cleanup -> run YOLO on after-cleanup scan and compare
+# ---------------------------------------------------------
+@app.post("/verify_cleanup")
+async def verify_cleanup(
+    file: UploadFile = File(...),
+    detection_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    digits = "".join(ch for ch in str(detection_id) if ch.isdigit())
+    if not digits:
+        raise HTTPException(status_code=400, detail=f"Invalid detection_id '{detection_id}'")
+    det_id_int = int(digits)
+
+    # 1. Load confirmed detection
+    detection = db.query(models.Detection).filter(
+        models.Detection.id == det_id_int
+    ).first()
+    if not detection:
+        raise HTTPException(status_code=404, detail=f"Detection with id={det_id_int} not found")
+    allowed_statuses = {"confirmed", "verified", "accepted", "cleaned", "flagged"}
+    if detection.status and detection.status.lower() not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Detection status is '{detection.status}' — only confirmed/verified detections can be verified. "
+                   f"Please confirm this detection on the Human Verification page first."
+        )
+
+    # 2. Load original before image
+    before_image = db.query(models.Image).filter(
+        models.Image.id == detection.image_id
+    ).first()
+
+    before_data_url = None
+    if before_image and before_image.filepath and os.path.isfile(before_image.filepath):
+        before_bgr = cv2.imread(before_image.filepath)
+        if before_bgr is None:
+            try:
+                before_bgr = cv2.imdecode(np.fromfile(before_image.filepath, np.uint8), cv2.IMREAD_COLOR)
+            except Exception:
+                pass
+
+        if before_bgr is not None:
+            before_annotated = before_bgr.copy()
+            if detection.bbox and len(detection.bbox) >= 4:
+                x1b, y1b, x2b, y2b = [int(round(float(v))) for v in detection.bbox]
+                x1b = max(0, min(x1b, before_annotated.shape[1] - 1))
+                x2b = max(0, min(x2b, before_annotated.shape[1] - 1))
+                y1b = max(0, min(y1b, before_annotated.shape[0] - 1))
+                y2b = max(0, min(y2b, before_annotated.shape[0] - 1))
+                cv2.rectangle(before_annotated, (x1b, y1b), (x2b, y2b), (0, 255, 0), 8)
+                lbl_b = f"{detection.object_class} {(detection.confidence or 0.0) * 100:.1f}%"
+                (tw_b, th_b), _ = cv2.getTextSize(lbl_b, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+                lt_b = max(0, y1b - th_b - 8)
+                lb_b = max(th_b + 8, y1b)
+                cv2.rectangle(before_annotated, (x1b, lt_b),
+                              (min(before_annotated.shape[1] - 1, x1b + tw_b + 8), lb_b), (0, 220, 0), -1)
+                cv2.putText(before_annotated, lbl_b, (x1b + 4, lb_b - 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 2, cv2.LINE_AA)
+
+            ok_b, png_b = cv2.imencode('.png', before_annotated)
+            if ok_b:
+                before_data_url = "data:image/png;base64," + base64.b64encode(png_b.tobytes()).decode('ascii')
+
+    # 3. Save after-cleanup image
+    raw_bytes = await file.read()
+    if not raw_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded after-cleanup image is empty")
+
+    survey_id_for_file = before_image.survey_id if before_image else 0
+    safe_name = os.path.basename(file.filename or "after_scan.png")
+    after_filename = f"after_{survey_id_for_file}_{det_id_int}_{safe_name}"
+    after_filepath = os.path.join(UPLOAD_DIR, after_filename)
+    with open(after_filepath, "wb") as buffer:
+        buffer.write(raw_bytes)
+
+    after_image_db = models.Image(
+        survey_id=survey_id_for_file,
+        filepath=after_filepath,
+        status="after_cleanup"
+    )
+    db.add(after_image_db)
+    db.flush()
+
+    # 4. Run YOLO on after-cleanup image
+    after_arr = cv2.imdecode(np.frombuffer(raw_bytes, np.uint8), cv2.IMREAD_COLOR)
+    if after_arr is None:
+        after_arr = cv2.imdecode(np.frombuffer(raw_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+    if after_arr is None:
+        raise HTTPException(status_code=400, detail="Could not decode after-cleanup sonar image")
+
+    proc_after = preprocess_sonar(after_arr)
+    after_results = model(proc_after, conf=0.08, iou=0.45, verbose=False)
+
+    after_cands = []
+    for res in after_results:
+        names_a = res.names or model.names
+        for box in res.boxes:
+            cid_a = int(box.cls[0])
+            conf_a = float(box.conf[0])
+            bbox_a = [float(v) for v in box.xyxy[0].cpu().numpy().tolist()]
+            cname_a = names_a[cid_a] if isinstance(names_a, dict) else str(cid_a)
+            after_cands.append({"class": cname_a, "class_name": cname_a, "confidence": conf_a, "bbox": bbox_a})
+
+    after_detections_raw, _, _, _ = suppress_duplicate_detections(
+        after_cands,
+        iou_thresh=0.45,
+        containment_thresh=0.65,
+        conf_tolerance=0.02
+    )
+
+    # 5. Draw after-image with bounding boxes
+    after_annotated = proc_after.copy() if len(proc_after.shape) == 3 else cv2.cvtColor(proc_after, cv2.COLOR_GRAY2BGR)
+    for ad in after_detections_raw:
+        bx1, by1, bx2, by2 = [int(round(float(v))) for v in ad["bbox"]]
+        bx1 = max(0, min(bx1, after_annotated.shape[1] - 1))
+        bx2 = max(0, min(bx2, after_annotated.shape[1] - 1))
+        by1 = max(0, min(by1, after_annotated.shape[0] - 1))
+        by2 = max(0, min(by2, after_annotated.shape[0] - 1))
+        cv2.rectangle(after_annotated, (bx1, by1), (bx2, by2), (0, 255, 0), 8)
+        lbl_a = f"{ad['class']} {ad['confidence'] * 100:.1f}%"
+        (tw_a, th_a), _ = cv2.getTextSize(lbl_a, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        lt_a = max(0, by1 - th_a - 8)
+        lb_a = max(th_a + 8, by1)
+        cv2.rectangle(after_annotated, (bx1, lt_a),
+                      (min(after_annotated.shape[1] - 1, bx1 + tw_a + 8), lb_a), (0, 220, 0), -1)
+        cv2.putText(after_annotated, lbl_a, (bx1 + 4, lb_a - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 2, cv2.LINE_AA)
+
+    ok_a, png_a = cv2.imencode('.png', after_annotated)
+    after_data_url = (
+        "data:image/png;base64," + base64.b64encode(png_a.tobytes()).decode('ascii')
+        if ok_a else None
+    )
+
+    # 6. IoU matching against original confirmed detection
+    same_object_found = False
+    best_iou = 0.0
+    after_conf_best = 0.0
+    matched_after_detection = None
+
+    for ad in after_detections_raw:
+        if ad["class"] != detection.object_class:
+            continue
+        if detection.bbox and len(detection.bbox) >= 4:
+            iou_val, _ = calculate_box_overlap(detection.bbox, ad["bbox"])
+        else:
+            iou_val = 0.31
+        if iou_val > best_iou:
+            best_iou = iou_val
+            after_conf_best = ad["confidence"]
+            matched_after_detection = ad
+        if iou_val >= 0.30:
+            same_object_found = True
+
+    if same_object_found:
+        result_status = "still_present"
+        cleanup_status_label = "NOT CLEARED"
+        verification_confidence = round((after_conf_best + best_iou) / 2, 2)
+    else:
+        result_status = "potentially_removed"
+        cleanup_status_label = "CLEARED"
+        verification_confidence = round(1 - (detection.confidence or 0.5) * 0.5, 2)
+        detection.status = "cleaned"
+
+    # 7. Save Verification record
+    verification = models.Verification(
+        detection_id=det_id_int,
+        before_image_id=detection.image_id,
+        after_image_id=after_image_db.id,
+        result=result_status,
+        confidence=verification_confidence,
+        comment=cleanup_status_label,
+    )
+    db.add(verification)
+    db.commit()
+    db.refresh(verification)
+
+    other_objects_detected = [
+        ad for ad in after_detections_raw
+        if ad["class"] != detection.object_class
+    ]
+
+    return {
+        "verification_id": verification.id,
+        "detection_id": det_id_int,
+        "before_image_id": detection.image_id,
+        "after_image_id": after_image_db.id,
+        "result": result_status,
+        "cleanup_status": cleanup_status_label,
+        "confidence": verification_confidence,
+        "best_iou": round(best_iou, 3),
+        "after_detections": after_detections_raw,
+        "matched_detection": matched_after_detection,
+        "other_objects_detected": other_objects_detected,
+        "other_objects_present": len(other_objects_detected) > 0,
+        "before_image": before_data_url,
+        "after_image": after_data_url,
+        "timestamp": verification.timestamp.isoformat() if verification.timestamp else None,
+        "message": "Cleanup verification completed using YOLO re-detection",
+    }
+
+
+# ---------------------------------------------------------
+# 12. GET /report and GET /report/{survey_id} -> report statistics
+# ---------------------------------------------------------
+@app.get("/report")
+def get_report(db: Session = Depends(get_db)):
+    total_surveys = db.query(models.Survey).count()
+    total_detections = db.query(models.Detection).count()
+    high_risk = db.query(models.Detection).filter(models.Detection.risk_score >= 70).count()
+    pending = db.query(models.Detection).filter(models.Detection.status == "pending").count()
+    cleaned = db.query(models.Detection).filter(models.Detection.status.in_(["cleaned", "verified"])).count()
+
+    return {
+        "total_surveys": total_surveys,
+        "total_debris": total_detections,
+        "high_risk": high_risk,
+        "pending_cleanup": pending,
+        "cleaned": cleaned,
+    }
+
+
+@app.get("/report/{survey_id}")
+def get_survey_report(survey_id: int, db: Session = Depends(get_db)):
+    survey = db.query(models.Survey).filter(models.Survey.id == survey_id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    image_ids = [img.id for img in db.query(models.Image).filter(models.Image.survey_id == survey_id).all()]
+    detections = db.query(models.Detection).filter(models.Detection.image_id.in_(image_ids)).all() if image_ids else []
+
+    high_risk = [d for d in detections if (d.risk_score or 0) >= 70 or str(d.priority).lower() == "high"]
+    medium_risk = [d for d in detections if 40 <= (d.risk_score or 0) < 70 or str(d.priority).lower() == "medium"]
+    low_risk = [d for d in detections if (d.risk_score or 0) < 40 or str(d.priority).lower() == "low"]
+
+    return {
+        "survey_id": survey.id,
+        "survey_name": survey.name,
+        "total_detections": len(detections),
+        "high_risk": len(high_risk),
+        "medium_risk": len(medium_risk),
+        "low_risk": len(low_risk),
+        "detections": [serialize_detection(d, db) for d in detections],
+    }
+
+
+# ---------------------------------------------------------
+# 13. GET /risk-map -> GIS map-ready detection data
+# ---------------------------------------------------------
+@app.get("/risk-map")
+def get_risk_map(survey_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Detection)
+    if survey_id is not None:
+        query = query.join(models.Image).filter(models.Image.survey_id == survey_id)
+    detections = query.order_by(models.Detection.id.asc()).all()
+    serialized = [serialize_detection(d, db) for d in detections]
+    map_data = [map_ready_detection(d) for d in serialized]
+    return {
+        "status": "success",
+        "total_detections": len(map_data),
+        "map_data": map_data,
+        "detections": map_data,
+    }
+
+
+# ---------------------------------------------------------
+# 14. GET /route and POST /route -> GIS cleanup mission route planning
+# ---------------------------------------------------------
+@app.get("/route")
+def get_route(
+    survey_id: Optional[int] = None,
+    vessel_lat: Optional[float] = None,
+    vessel_lng: Optional[float] = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Detection)
+    if survey_id is not None:
+        query = query.join(models.Image).filter(models.Image.survey_id == survey_id)
+    detections = query.order_by(models.Detection.id.asc()).all()
+    serialized = [serialize_detection(d, db) for d in detections]
+
+    vessel_start = None
+    if vessel_lat is not None and vessel_lng is not None:
+        vessel_start = {"latitude": vessel_lat, "longitude": vessel_lng}
+    elif survey_id is not None:
+        survey = db.query(models.Survey).filter(models.Survey.id == survey_id).first()
+        if survey and survey.latitude is not None and survey.longitude is not None:
+            vessel_start = {"latitude": survey.latitude, "longitude": survey.longitude}
+
+    plan = generate_mission_plan(serialized, vessel_start=vessel_start)
+    return plan.get("route", {})
+
+
+@app.post("/route")
+def post_route(
+    payload: Optional[dict] = None,
+    db: Session = Depends(get_db),
+):
+    payload = payload or {}
+    survey_id = payload.get("survey_id")
+    vessel_start = payload.get("vessel_start")
+
+    query = db.query(models.Detection)
+    if survey_id is not None:
+        query = query.join(models.Image).filter(models.Image.survey_id == survey_id)
+    detections = query.order_by(models.Detection.id.asc()).all()
+    serialized = [serialize_detection(d, db) for d in detections]
+
+    plan = generate_mission_plan(serialized, vessel_start=vessel_start)
+    return plan.get("route", {})
+
+
+# ---------------------------------------------------------
+# 15. GET /mission-plan -> full GIS mission plan (detections, risk, priority, route)
+# ---------------------------------------------------------
+@app.get("/mission-plan")
+def get_mission_plan_endpoint(
+    survey_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Detection)
+    if survey_id is not None:
+        query = query.join(models.Image).filter(models.Image.survey_id == survey_id)
+    detections = query.order_by(models.Detection.id.asc()).all()
+    serialized = [serialize_detection(d, db) for d in detections]
+
+    vessel_start = None
+    if survey_id is not None:
+        survey = db.query(models.Survey).filter(models.Survey.id == survey_id).first()
+        if survey and survey.latitude is not None and survey.longitude is not None:
+            vessel_start = {"latitude": survey.latitude, "longitude": survey.longitude}
+
+    return generate_mission_plan(serialized, vessel_start=vessel_start)
+
+
+# ---------------------------------------------------------
+# DEPLOYMENT DIAGNOSTICS
+# ---------------------------------------------------------
+@app.get("/__routes")
+def list_registered_routes():
+    """Return registered routes so Render deployment can be verified quickly."""
+    routes = []
+    for route in app.routes:
+        methods = sorted(m for m in (getattr(route, "methods", None) or []) if m not in {"HEAD", "OPTIONS"})
+        if methods:
+            routes.append({"path": route.path, "methods": methods})
+    return {"status": "ok", "routes": routes}
+
+
+# ---------------------------------------------------------
+# 16. GET /health -> system health check and active model info
+# ---------------------------------------------------------
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "model": os.path.basename(MODEL_PATH),
+        "classes": model.names,
     }

@@ -35,11 +35,14 @@ class ImageOut(BaseModel):
 
 class SurveyIn(BaseModel):
     name: Optional[str] = None
+    date: Optional[datetime] = None
     water_body: Optional[str] = None
+    location: Optional[str] = None
     vessel: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     depth: Optional[float] = None
+    sonar_device: Optional[str] = None
 
 
 class SurveyOut(BaseModel):
@@ -67,8 +70,8 @@ class ReviewIn(BaseModel):
 
 class VerifyIn(BaseModel):
     detection_id: int
-    before_image_id: int
-    after_image_id: int
+    before_image_id: Optional[int] = None
+    after_image_id: Optional[int] = None
     comment: Optional[str] = None
 
 

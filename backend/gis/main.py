@@ -6,21 +6,33 @@
 import json
 from pathlib import Path
 
-from risk_engine import calculate_risk
 
-from priority_engine import (
-    calculate_priority,
-    rank_priorities
-)
-
-from geo_service import (
-    map_ready_detection,
-    normalize_backend_data
-)
-
-from route_planner import (
-    plan_route
-)
+try:
+    from .risk_engine import calculate_risk
+    from .priority_engine import (
+        calculate_priority,
+        rank_priorities
+    )
+    from .geo_service import (
+        map_ready_detection,
+        normalize_backend_data
+    )
+    from .route_planner import (
+        plan_route
+    )
+except ImportError:
+    from risk_engine import calculate_risk
+    from priority_engine import (
+        calculate_priority,
+        rank_priorities
+    )
+    from geo_service import (
+        map_ready_detection,
+        normalize_backend_data
+    )
+    from route_planner import (
+        plan_route
+    )
 
 
 # ============================================================
