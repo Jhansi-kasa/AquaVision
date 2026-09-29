@@ -1,0 +1,155 @@
+# ==============================================================================
+# Aqua Vision - Root .gitignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Virtual Environments
+# ------------------------------------------------------------------------------
+venv/
+venv*/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.env
+.env.*
+!.env.example
+
+# ------------------------------------------------------------------------------
+# 2. Node.js & Frontend Build Outputs
+# ------------------------------------------------------------------------------
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/out/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------------------------
+# 3. Python Bytecode, Caches & Distribution
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+*.manifest
+*.spec
+
+# ------------------------------------------------------------------------------
+# 4. Testing, Linting & Coverage
+# ------------------------------------------------------------------------------
+.pytest_cache/
+gis/.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.oxlint-cache
+
+# ------------------------------------------------------------------------------
+# 5. Datasets & Raw Sonar Data (Local Storage Only)
+# ------------------------------------------------------------------------------
+dataset/
+datasets/
+final_ai_ready_dataset/
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.raw
+*.sgy
+*.segy
+*.xtf
+*.bag
+
+# ------------------------------------------------------------------------------
+# 6. Model Training Runs, Large Checkpoints & Heavy Weights
+# ------------------------------------------------------------------------------
+runs/
+experiments/runs/
+checkpoints/
+*.pth
+*.onnx
+*.engine
+*.tflite
+*.weights
+
+# Exclude all generic .pt checkpoints by default
+*.pt
+# Whitelist production-ready trained model weights (<10MB) for immediate out-of-the-box run
+!model/aqua_vision_100ep_best.pt
+!model/best.pt
+!backend/app/model/aqua_vision_100ep_best.pt
+
+# ------------------------------------------------------------------------------
+# 7. Databases & Runtime Uploads
+# ------------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+marine_debris.db
+backend/marine_debris.db
+experiments/databases/*.db
+
+# Uploads directory contents (preserve directory structure via .gitkeep)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ------------------------------------------------------------------------------
+# 8. Logs & Diagnostic Dumps
+# ------------------------------------------------------------------------------
+*.log
+logs/
+
+# ------------------------------------------------------------------------------
+# 9. IDE, Editor & OS Specific Files
+# ------------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# ------------------------------------------------------------------------------
+# 10. Temporary & Backup Files
+# ------------------------------------------------------------------------------
+*.bak
+*.tmp
+*.temp
+tmp/
+scratch/

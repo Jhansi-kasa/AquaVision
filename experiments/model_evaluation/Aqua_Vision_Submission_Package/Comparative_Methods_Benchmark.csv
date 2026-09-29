@@ -1,0 +1,6 @@
+Method,Model_Type,Parameters_M,Latency_ms,Precision_Pct,Recall_Pct,mAP50_Pct,Key_Sonar_Advantage_Limitation
+SSD,1-Stage Classical,26.3M,~38 ms,26.4%,18.2%,19.5%,Fixed anchors struggle with micro-targets (<20 px) and acoustic shadow boundaries
+Faster_RCNN,2-Stage Region-Based,41.5M,~142 ms,31.8%,22.6%,24.8%,Accurate proposals but slow (7 FPS) - unsuited for real-time AUV deployment
+YOLOv9,1-Stage Modern,20.1M,~28 ms,35.2%,32.4%,30.8%,PGI prevents feature loss in deep layers but heavier parameter footprint
+SOCA-YOLO,Sonar-Specialized,7.8M,~22 ms,39.4%,36.8%,35.2%,Second-order attention models long-range acoustic shadow dependencies
+Aqua_Vision_YOLO11,1-Stage Edge-Optimized,2.58M,~12 ms,38.0%,38.1%,34.6%,Lightest footprint (2.58M params) with physics-constrained shadow preservation (flipud=0.0)

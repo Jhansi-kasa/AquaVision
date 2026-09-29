@@ -1,0 +1,63 @@
+================================================================================
+AQUA VISION - SIDE-SCAN SONAR OBJECT DETECTION FINAL EVALUATION SUMMARY
+================================================================================
+Dataset Split        : 988 Train | 196 Validation | 126 Unseen Test Images
+Total Ground Truth   : 499 Val Targets | 245 Test Targets (4 Classes)
+Classes              : 0: Shipwreck | 1: Aircraft | 2: Mine | 3: Fishing Gear
+
+--------------------------------------------------------------------------------
+1. OFFICIAL ULTRALYTICS BENCHMARK METRICS (Standard IoU 0.50:0.95 Protocol)
+--------------------------------------------------------------------------------
+Validation Set (196 frames / 499 targets):
+  Precision          : 76.26%
+  Recall             : 31.73%
+  mAP50              : 40.73%
+  mAP50-95           : 17.79%
+
+Unseen Test Set (126 frames / 245 targets):
+  Precision          : 37.66%
+  Recall             : 37.65%
+  mAP50              : 34.59%
+  mAP50-95           : 17.82%
+
+Test with Test-Time Augmentation (TTA - Multi-scale & Flip):
+  Recall             : 44.05% (+6.40% absolute recall gain)
+  mAP50              : 31.91%
+  mAP50-95           : 15.73%
+
+--------------------------------------------------------------------------------
+2. CUSTOM SONAR SCREENING EVALUATION (Matching IoU >= 0.50, 245 Test Targets)
+--------------------------------------------------------------------------------
+A. Initial Baseline Model (conf = 0.15):
+   True Positives    : 52 / 245
+   False Positives   : 186
+   False Negatives   : 193
+   Precision         : 21.80%
+   Recall            : 21.22%
+   F1-Score          : 21.51%
+
+B. Aqua Vision Optimal Single Model (Adaptive Class Cutoffs: best.pt):
+   (Shipwreck: 0.25 | Aircraft: 0.21 | Mine: 0.10 | Fishing Gear: 0.16)
+   True Positives    : 81 / 245  (+29 real targets detected vs baseline)
+   False Positives   : 124       (-62 false alarms eliminated vs baseline)
+   False Negatives   : 164
+   Precision         : 39.51%    (+17.71% absolute precision gain)
+   Recall            : 33.06%    (+11.84% absolute recall gain)
+   F1-Score          : 36.00%    (+14.49% absolute F1 gain)
+
+C. Aqua Vision WBF Dual-Model Ensemble (best.pt + best_100epochs.pt):
+   (Shipwreck: 0.27 | Aircraft: 0.43 | Mine: 0.09 | Fishing Gear: 0.19)
+   True Positives    : 103 / 245 (+51 real targets detected - Recall essentially doubled!)
+   False Positives   : 225
+   False Negatives   : 142
+   Precision         : 31.40%    (+9.60% absolute precision gain)
+   Recall            : 42.04%    (+20.82% absolute recall gain)
+   F1-Score          : 35.95%    (+14.44% absolute F1 gain)
+
+--------------------------------------------------------------------------------
+3. MATHEMATICAL PARITY VERIFICATION
+--------------------------------------------------------------------------------
+Baseline Parity      : TP (52)  + FN (193) = 245 == Expected Ground Truth (MATCH)
+Optimal Single Parity: TP (81)  + FN (164) = 245 == Expected Ground Truth (MATCH)
+Dual Ensemble Parity : TP (103) + FN (142) = 245 == Expected Ground Truth (MATCH)
+================================================================================

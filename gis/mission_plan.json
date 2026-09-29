@@ -1,0 +1,506 @@
+{
+    "project": "AI Marine Detection GIS System",
+    "module": "Member 5 - GIS, Risk and Mission Planning",
+    "data_source": "Detection data",
+    "detections": [
+        {
+            "detection_id": "DET001",
+            "object_class": "shipwreck",
+            "confidence": 0.93,
+            "bbox": [
+                120,
+                80,
+                340,
+                220
+            ],
+            "survey_id": 1,
+            "latitude": 17.686,
+            "longitude": 83.218,
+            "depth": 42.5,
+            "estimated_size": 12.4,
+            "data_quality": 0.95,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET002",
+            "object_class": "crab_pot",
+            "confidence": 0.82,
+            "bbox": [
+                200,
+                110,
+                310,
+                190
+            ],
+            "survey_id": 1,
+            "latitude": 17.688,
+            "longitude": 83.221,
+            "depth": 18.0,
+            "estimated_size": 4.5,
+            "data_quality": 0.9,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET003",
+            "object_class": "aircraft",
+            "confidence": 0.88,
+            "bbox": [
+                100,
+                100,
+                360,
+                300
+            ],
+            "survey_id": 1,
+            "latitude": 17.691,
+            "longitude": 83.224,
+            "depth": 55.0,
+            "estimated_size": 20.0,
+            "data_quality": 0.93,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET004",
+            "object_class": "mine",
+            "confidence": 0.79,
+            "bbox": [
+                150,
+                100,
+                260,
+                210
+            ],
+            "survey_id": 1,
+            "latitude": 17.684,
+            "longitude": 83.214,
+            "depth": 30.0,
+            "estimated_size": 7.2,
+            "data_quality": 0.88,
+            "cleanup_status": "completed"
+        },
+        {
+            "detection_id": "DET005",
+            "object_class": "drowning_victim",
+            "confidence": 0.91,
+            "bbox": [
+                180,
+                120,
+                270,
+                260
+            ],
+            "survey_id": 1,
+            "latitude": 17.694,
+            "longitude": 83.226,
+            "depth": 15.0,
+            "estimated_size": 2.0,
+            "data_quality": 0.96,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET006",
+            "object_class": "seafloor",
+            "confidence": 0.61,
+            "bbox": [
+                180,
+                90,
+                280,
+                170
+            ],
+            "survey_id": 1,
+            "latitude": 17.681,
+            "longitude": 83.211,
+            "depth": 50.0,
+            "estimated_size": 6.0,
+            "data_quality": 0.65,
+            "cleanup_status": "pending"
+        }
+    ],
+    "risk_results": [
+        {
+            "detection_id": "DET001",
+            "risk_score": 84.53,
+            "risk_level": "HIGH",
+            "risk_factors": {
+                "object_type": "shipwreck",
+                "confidence": 0.93,
+                "depth": 42.5,
+                "data_quality": 0.95
+            },
+            "factor_scores": {
+                "object_type": 90.0,
+                "confidence": 93.0,
+                "depth": 42.5,
+                "data_quality": 95.0
+            }
+        },
+        {
+            "detection_id": "DET002",
+            "risk_score": 60.8,
+            "risk_level": "MEDIUM",
+            "risk_factors": {
+                "object_type": "crab_pot",
+                "confidence": 0.82,
+                "depth": 18.0,
+                "data_quality": 0.9
+            },
+            "factor_scores": {
+                "object_type": 50.0,
+                "confidence": 82.0,
+                "depth": 18.0,
+                "data_quality": 90.0
+            }
+        },
+        {
+            "detection_id": "DET003",
+            "risk_score": 82.6,
+            "risk_level": "HIGH",
+            "risk_factors": {
+                "object_type": "aircraft",
+                "confidence": 0.88,
+                "depth": 55.0,
+                "data_quality": 0.93
+            },
+            "factor_scores": {
+                "object_type": 85.0,
+                "confidence": 88.0,
+                "depth": 55.0,
+                "data_quality": 93.0
+            }
+        },
+        {
+            "detection_id": "DET004",
+            "risk_score": 81.4,
+            "risk_level": "HIGH",
+            "risk_factors": {
+                "object_type": "mine",
+                "confidence": 0.79,
+                "depth": 30.0,
+                "data_quality": 0.88
+            },
+            "factor_scores": {
+                "object_type": 100.0,
+                "confidence": 79.0,
+                "depth": 30.0,
+                "data_quality": 88.0
+            }
+        },
+        {
+            "detection_id": "DET005",
+            "risk_score": 63.95,
+            "risk_level": "MEDIUM",
+            "risk_factors": {
+                "object_type": "drowning_victim",
+                "confidence": 0.91,
+                "depth": 15.0,
+                "data_quality": 0.96
+            },
+            "factor_scores": {
+                "object_type": 50.0,
+                "confidence": 91.0,
+                "depth": 15.0,
+                "data_quality": 96.0
+            }
+        },
+        {
+            "detection_id": "DET006",
+            "risk_score": 55.55,
+            "risk_level": "MEDIUM",
+            "risk_factors": {
+                "object_type": "seafloor",
+                "confidence": 0.61,
+                "depth": 50.0,
+                "data_quality": 0.65
+            },
+            "factor_scores": {
+                "object_type": 50.0,
+                "confidence": 61.0,
+                "depth": 50.0,
+                "data_quality": 65.0
+            }
+        }
+    ],
+    "priority_results": [
+        {
+            "detection_id": "DET003",
+            "priority_score": 85.92,
+            "priority": "HIGH",
+            "priority_label": "HIGH",
+            "mission_type": "CLEANUP_REVIEW",
+            "priority_rank": 1
+        },
+        {
+            "detection_id": "DET001",
+            "priority_score": 84.85,
+            "priority": "HIGH",
+            "priority_label": "HIGH",
+            "mission_type": "CLEANUP_REVIEW",
+            "priority_rank": 2
+        },
+        {
+            "detection_id": "DET004",
+            "priority_score": 79.2,
+            "priority": "HIGH",
+            "priority_label": "HIGH",
+            "mission_type": "CLEANUP_REVIEW",
+            "priority_rank": 3
+        },
+        {
+            "detection_id": "DET005",
+            "priority_score": 70.85,
+            "priority": "HIGH",
+            "priority_label": "HIGH",
+            "mission_type": "REVIEW_RESPONSE",
+            "priority_rank": 4
+        },
+        {
+            "detection_id": "DET002",
+            "priority_score": 63.5,
+            "priority": "MEDIUM",
+            "priority_label": "MEDIUM",
+            "mission_type": "CLEANUP_REVIEW",
+            "priority_rank": 5
+        },
+        {
+            "detection_id": "DET006",
+            "priority_score": 50.17,
+            "priority": "MEDIUM",
+            "priority_label": "MEDIUM",
+            "mission_type": "NO_ACTION",
+            "priority_rank": 6
+        }
+    ],
+    "map_data": [
+        {
+            "detection_id": "DET001",
+            "survey_id": 1,
+            "object_class": "shipwreck",
+            "confidence": 0.93,
+            "bbox": [
+                120,
+                80,
+                340,
+                220
+            ],
+            "latitude": 17.686,
+            "longitude": 83.218,
+            "location_available": true,
+            "depth": 42.5,
+            "estimated_size": 12.4,
+            "data_quality": 0.95,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET002",
+            "survey_id": 1,
+            "object_class": "crab_pot",
+            "confidence": 0.82,
+            "bbox": [
+                200,
+                110,
+                310,
+                190
+            ],
+            "latitude": 17.688,
+            "longitude": 83.221,
+            "location_available": true,
+            "depth": 18.0,
+            "estimated_size": 4.5,
+            "data_quality": 0.9,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET003",
+            "survey_id": 1,
+            "object_class": "aircraft",
+            "confidence": 0.88,
+            "bbox": [
+                100,
+                100,
+                360,
+                300
+            ],
+            "latitude": 17.691,
+            "longitude": 83.224,
+            "location_available": true,
+            "depth": 55.0,
+            "estimated_size": 20.0,
+            "data_quality": 0.93,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET004",
+            "survey_id": 1,
+            "object_class": "mine",
+            "confidence": 0.79,
+            "bbox": [
+                150,
+                100,
+                260,
+                210
+            ],
+            "latitude": 17.684,
+            "longitude": 83.214,
+            "location_available": true,
+            "depth": 30.0,
+            "estimated_size": 7.2,
+            "data_quality": 0.88,
+            "cleanup_status": "completed"
+        },
+        {
+            "detection_id": "DET005",
+            "survey_id": 1,
+            "object_class": "drowning_victim",
+            "confidence": 0.91,
+            "bbox": [
+                180,
+                120,
+                270,
+                260
+            ],
+            "latitude": 17.694,
+            "longitude": 83.226,
+            "location_available": true,
+            "depth": 15.0,
+            "estimated_size": 2.0,
+            "data_quality": 0.96,
+            "cleanup_status": "pending"
+        },
+        {
+            "detection_id": "DET006",
+            "survey_id": 1,
+            "object_class": "seafloor",
+            "confidence": 0.61,
+            "bbox": [
+                180,
+                90,
+                280,
+                170
+            ],
+            "latitude": 17.681,
+            "longitude": 83.211,
+            "location_available": true,
+            "depth": 50.0,
+            "estimated_size": 6.0,
+            "data_quality": 0.65,
+            "cleanup_status": "pending"
+        }
+    ],
+    "route": {
+        "vessel_start": {
+            "latitude": 17.69,
+            "longitude": 83.22
+        },
+        "start_mode": "VESSEL",
+        "routing_strategy": "DISTANCE_FIRST_PRIORITY_ON_NEAR_TIES_AND_WITHIN_CLUSTER",
+        "cluster_distance_km": 0.5,
+        "area_tie_km": 0.1,
+        "route": [
+            {
+                "sequence": 1,
+                "detection_id": "DET003",
+                "object_class": "aircraft",
+                "latitude": 17.691,
+                "longitude": 83.224,
+                "priority": "HIGH",
+                "priority_score": 85.92,
+                "priority_rank": 1,
+                "distance_from_vessel_km": 0.438,
+                "segment_distance_km": 0.438,
+                "cluster_id": "AREA-01",
+                "cluster_size": 3,
+                "route_reason": "NEAREST_AREA"
+            },
+            {
+                "sequence": 2,
+                "detection_id": "DET001",
+                "object_class": "shipwreck",
+                "latitude": 17.686,
+                "longitude": 83.218,
+                "priority": "HIGH",
+                "priority_score": 84.85,
+                "priority_rank": 2,
+                "distance_from_vessel_km": 0.493,
+                "segment_distance_km": 0.844,
+                "cluster_id": "AREA-01",
+                "cluster_size": 3,
+                "route_reason": "CLUSTER_PRIORITY"
+            },
+            {
+                "sequence": 3,
+                "detection_id": "DET002",
+                "object_class": "crab_pot",
+                "latitude": 17.688,
+                "longitude": 83.221,
+                "priority": "MEDIUM",
+                "priority_score": 63.5,
+                "priority_rank": 5,
+                "distance_from_vessel_km": 0.246,
+                "segment_distance_km": 0.388,
+                "cluster_id": "AREA-01",
+                "cluster_size": 3,
+                "route_reason": "CLUSTER_PRIORITY"
+            },
+            {
+                "sequence": 4,
+                "detection_id": "DET004",
+                "object_class": "mine",
+                "latitude": 17.684,
+                "longitude": 83.214,
+                "priority": "HIGH",
+                "priority_score": 79.2,
+                "priority_rank": 3,
+                "distance_from_vessel_km": 0.921,
+                "segment_distance_km": 0.865,
+                "cluster_id": "AREA-02",
+                "cluster_size": 2,
+                "route_reason": "AREA_TIE_PRIORITY"
+            },
+            {
+                "sequence": 5,
+                "detection_id": "DET006",
+                "object_class": "seafloor",
+                "latitude": 17.681,
+                "longitude": 83.211,
+                "priority": "MEDIUM",
+                "priority_score": 50.17,
+                "priority_rank": 6,
+                "distance_from_vessel_km": 1.382,
+                "segment_distance_km": 0.461,
+                "cluster_id": "AREA-02",
+                "cluster_size": 2,
+                "route_reason": "CLUSTER_PRIORITY"
+            },
+            {
+                "sequence": 6,
+                "detection_id": "DET005",
+                "object_class": "drowning_victim",
+                "latitude": 17.694,
+                "longitude": 83.226,
+                "priority": "HIGH",
+                "priority_score": 70.85,
+                "priority_rank": 4,
+                "distance_from_vessel_km": 0.776,
+                "segment_distance_km": 2.148,
+                "cluster_id": "AREA-03",
+                "cluster_size": 1,
+                "route_reason": "NEAREST_AREA"
+            }
+        ],
+        "total_stops": 6,
+        "total_clusters": 3,
+        "estimated_total_distance_km": 5.14
+    },
+    "summary": {
+        "total_detections": 6,
+        "risk_summary": {
+            "high": 3,
+            "medium": 3,
+            "low": 0
+        },
+        "priority_summary": {
+            "high": 4,
+            "medium": 2,
+            "low": 0
+        },
+        "route_stops": 6,
+        "estimated_route_distance_km": 5.14,
+        "total_clusters": 3
+    }
+}

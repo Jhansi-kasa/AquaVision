@@ -1,0 +1,80 @@
+[
+    {
+        "detection_id": "DET001",
+        "object_class": "shipwreck",
+        "confidence": 0.93,
+        "bbox": [120, 80, 340, 220],
+        "survey_id": 1,
+        "latitude": 17.6860,
+        "longitude": 83.2180,
+        "depth": 42.5,
+        "estimated_size": 12.4,
+        "data_quality": 0.95,
+        "cleanup_status": "pending"
+    },
+    {
+        "detection_id": "DET002",
+        "object_class": "crab_pot",
+        "confidence": 0.82,
+        "bbox": [200, 110, 310, 190],
+        "survey_id": 1,
+        "latitude": 17.6880,
+        "longitude": 83.2210,
+        "depth": 18.0,
+        "estimated_size": 4.5,
+        "data_quality": 0.90,
+        "cleanup_status": "pending"
+    },
+    {
+        "detection_id": "DET003",
+        "object_class": "aircraft",
+        "confidence": 0.88,
+        "bbox": [100, 100, 360, 300],
+        "survey_id": 1,
+        "latitude": 17.6910,
+        "longitude": 83.2240,
+        "depth": 55.0,
+        "estimated_size": 20.0,
+        "data_quality": 0.93,
+        "cleanup_status": "pending"
+    },
+    {
+        "detection_id": "DET004",
+        "object_class": "mine",
+        "confidence": 0.79,
+        "bbox": [150, 100, 260, 210],
+        "survey_id": 1,
+        "latitude": 17.6840,
+        "longitude": 83.2140,
+        "depth": 30.0,
+        "estimated_size": 7.2,
+        "data_quality": 0.88,
+        "cleanup_status": "completed"
+    },
+    {
+        "detection_id": "DET005",
+        "object_class": "drowning_victim",
+        "confidence": 0.91,
+        "bbox": [180, 120, 270, 260],
+        "survey_id": 1,
+        "latitude": 17.6940,
+        "longitude": 83.2260,
+        "depth": 15.0,
+        "estimated_size": 2.0,
+        "data_quality": 0.96,
+        "cleanup_status": "pending"
+    },
+    {
+        "detection_id": "DET006",
+        "object_class": "seafloor",
+        "confidence": 0.61,
+        "bbox": [180, 90, 280, 170],
+        "survey_id": 1,
+        "latitude": 17.6810,
+        "longitude": 83.2110,
+        "depth": 50.0,
+        "estimated_size": 6.0,
+        "data_quality": 0.65,
+        "cleanup_status": "pending"
+    }
+]

@@ -1,0 +1,110 @@
+{
+  "pipeline_name": "Final_AI_Ready_Sonar_Pipeline_v1.0",
+  "version": "1.0.0",
+  "author": "Member 2 (Computer Vision & Sonar Processing)",
+  "project": "AI-Powered Automated Underwater Marine Debris and Anomaly Detection System using Side-Scan Sonar Imagery",
+  "source_dataset": "SIH_Anomaly_V1",
+  "source_dataset_path": "C:\\Users\\dell\\Downloads\\SIH_Anomaly_V1\\SIH_Anomaly_V1",
+  "target_dataset": "final_ai_ready_dataset",
+  "image_resolution": "native side-scan sonar (preserved)",
+  "color_channels": 3,
+  "data_type": "uint8",
+  "classes": {
+    "0": "shipwreck",
+    "1": "aircraft",
+    "2": "mine"
+  },
+  "execution_order": [
+    {
+      "step": 1,
+      "stage": "swath_normalization",
+      "module": "swath_normalization.py",
+      "function": "apply_swath_normalization",
+      "domain": "CIELAB L* (Luminance)",
+      "scientific_justification": "Corrects macro acoustic geometric spreading loss (1/R^2) and seawater range attenuation fall-off across the swath. Must precede local operations to prevent biased baselines across near-range vs far-range.",
+      "parameters": {
+        "axis": "horizontal",
+        "method": "median",
+        "smooth_method": "gaussian",
+        "smooth_sigma": 35.0,
+        "smooth_kernel_size": 71,
+        "min_gain": 0.5,
+        "max_gain": 2.5,
+        "target_level": "mean",
+        "min_intensity_floor": 8.0,
+        "enabled": true
+      }
+    },
+    {
+      "step": 2,
+      "stage": "bilateral_denoising",
+      "module": "denoising.py",
+      "function": "apply_bilateral_denoising",
+      "domain": "BGR spatial/range filtering",
+      "scientific_justification": "Suppresses high-frequency coherent acoustic speckle in homogeneous sediments while strictly preserving sharp acoustic highlight-to-shadow boundaries. Outperforms Gaussian and Median blurs.",
+      "parameters": {
+        "d": 7,
+        "sigma_color": 50.0,
+        "sigma_space": 50.0,
+        "enabled": true
+      }
+    },
+    {
+      "step": 3,
+      "stage": "robust_normalization",
+      "module": "normalization.py",
+      "function": "apply_robust_normalization",
+      "domain": "Global radiometric intensity",
+      "scientific_justification": "Calibrates pixel intensities to full [0, 255] uint8 dynamic range using 1%-99% percentile clipping, eliminating dynamic range compression caused by single-pixel acoustic spike outliers.",
+      "parameters": {
+        "p_low": 1.0,
+        "p_high": 99.0,
+        "min_out": 0.0,
+        "max_out": 255.0,
+        "eps": 1e-5,
+        "enabled": true
+      }
+    },
+    {
+      "step": 4,
+      "stage": "clahe",
+      "module": "clahe.py",
+      "function": "apply_clahe_enhancement",
+      "domain": "CIELAB L* (Luminance)",
+      "scientific_justification": "Maximizes local target-to-shadow contrast within 80x80 contextual tiles without blowing out noise floor. Preserves false-color palette integrity by operating strictly on luminance.",
+      "parameters": {
+        "clip_limit": 2.0,
+        "tile_grid_size": [8, 8],
+        "color_space": "LAB",
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_methods": [
+    {
+      "method": "Gaussian Blur",
+      "stage": "P1 Denoising",
+      "reason_for_rejection": "Blindly diffuses high-frequency gradients (EPI 0.322 vs 0.500 for Bilateral), blurring small debris boundaries (e.g. compact targets, mines)."
+    },
+    {
+      "method": "Median Blur",
+      "stage": "P1 Denoising",
+      "reason_for_rejection": "Erodes sharp geometric corners and thin structural boundaries (EPI 0.284), degrading acoustic shadow penumbras."
+    },
+    {
+      "method": "Frost Speckle Filter (5x5)",
+      "stage": "P2 Speckle Filtering",
+      "reason_for_rejection": "Spatial kernel dilation washes out acoustic shadows (shadow area reduced to 19.4% vs 20.4% for Lee), lowers PSNR (27.88 dB), and exhibits 4.9x higher latency (231.7 ms)."
+    },
+    {
+      "method": "Lee Speckle Filter (5x5)",
+      "stage": "P2 Speckle Filtering",
+      "reason_for_rejection": "While Lee 5x5 is effective in isolation (PSNR 30.33 dB), chaining both Lee and Bilateral causes redundant double-smoothing and destroys fine seabed sediment texture. Bilateral filter alone provides higher signal fidelity (PSNR 34.40 dB)."
+    },
+    {
+      "method": "Morphological Top-Hat / Black-Hat (P4)",
+      "stage": "P4 Morphology",
+      "reason_for_rejection": "Direct image subtraction strips ambient seafloor contextual textures essential for YOLO feature pyramids. Furthermore, morphological kernels >= 9x9 activate natural sand ripple crests and troughs (12.7% false clutter for 9x9, 26.8% for 15x15), inducing severe false-positive risks for object detectors. Reserved strictly as an auxiliary research feature."
+    }
+  ]
+}
